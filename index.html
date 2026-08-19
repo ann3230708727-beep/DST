@@ -7,17 +7,46 @@
   <meta name="description" content="做点儿啥 v2.7.1：视觉与交互设计规范 V1.1 落实版" />
   <link rel="manifest" href="manifest.webmanifest" />
   <title>做点儿啥 · v2.7.1 · V1.1</title>
-  <link rel="stylesheet" href="styles-1.css" />
-  <link rel="stylesheet" href="styles-2.css" />
+  <style>h1{color:#d32f2f}</style>
+  <script>
+    (()=>{
+      const isPreview=location.hostname.endsWith(".github.io");
+      const nonce=Date.now().toString(36);
+      const asset=path=>isPreview?`${path}?v=${nonce}`:path;
+      window.__DST_ASSET__=asset;
+      window.__DST_STYLES_READY__=Promise.all(
+        ["styles-1.css","styles-2.css"].map(path=>new Promise((resolve,reject)=>{
+          const link=document.createElement("link");
+          link.rel="stylesheet";
+          link.href=asset(path);
+          link.onload=resolve;
+          link.onerror=reject;
+          document.head.appendChild(link);
+        }))
+      );
+    })();
+  </script>
 </head>
 <body>
-  <script src="app-core-1.js"></script>
-  <script src="app-core-2.js"></script>
-  <script src="app-tasks-1.js"></script>
-  <script src="app-tasks-2.js"></script>
-  <script src="app-tasks-3.js"></script>
-  <script src="app-ui-1.js"></script>
-  <script src="app-ui-2.js"></script>
-  <script src="app-ui-3.js"></script>
+  <script>
+    (async()=>{
+      await window.__DST_STYLES_READY__;
+      const scripts=[
+        "app-core-1.js","app-core-2.js",
+        "app-tasks-1.js","app-tasks-2.js","app-tasks-3.js",
+        "app-ui-1.js","app-ui-2.js","app-ui-3.js"
+      ];
+      for(const path of scripts){
+        await new Promise((resolve,reject)=>{
+          const script=document.createElement("script");
+          script.src=window.__DST_ASSET__(path);
+          script.async=false;
+          script.onload=resolve;
+          script.onerror=reject;
+          document.body.appendChild(script);
+        });
+      }
+    })().catch(error=>console.error("DST preview asset load failed",error));
+  </script>
 </body>
 </html>
