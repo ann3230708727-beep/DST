@@ -1,4 +1,5 @@
-const CACHE_NAME = "do-something-v2.7.1-v1.1-preview-1";
+const IS_PREVIEW = self.location.hostname.endsWith(".github.io");
+const CACHE_NAME = "do-something-v2.7.1-v1.1-preview-2";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -16,20 +17,30 @@ const APP_SHELL = [
 ];
 
 self.addEventListener("install", event => {
-  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));
+  if(IS_PREVIEW){
+    event.waitUntil(caches.keys().then(keys=>Promise.all(keys.map(key=>caches.delete(key)))));
+  }else{
+    event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));
+  }
   self.skipWaiting();
 });
 
 self.addEventListener("activate", event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))))
+      .then(keys => Promise.all(keys.filter(key => IS_PREVIEW || key !== CACHE_NAME).map(key => caches.delete(key))))
       .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener("fetch", event => {
   if(event.request.method !== "GET") return;
+
+  if(IS_PREVIEW){
+    event.respondWith(fetch(event.request,{cache:"no-store"}));
+    return;
+  }
+
   event.respondWith(
     fetch(event.request)
       .then(response => {
