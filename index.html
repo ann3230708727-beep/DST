@@ -51,6 +51,31 @@
       }
     }
     .task>*{position:relative;z-index:1}
+    .check{
+      width:27px;
+      height:27px;
+      margin-left:3px;
+      border:0;
+      background:transparent;
+      position:relative;
+    }
+    .check::before{
+      content:"";
+      width:21px;
+      height:21px;
+      border:1.3px solid var(--meta);
+      border-radius:50%;
+      position:absolute;
+      left:50%;
+      top:50%;
+      transform:translate(-50%,-50%);
+      background:transparent;
+      transition:border-color .16s ease,background-color .16s ease;
+    }
+    .check:hover{background:transparent}
+    .check:hover::before{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
+    .check.done::before{background:var(--text);border-color:var(--text)}
+    .task-title{font-size:14.5px}
     .pin,.task-more{
       border-radius:999px;
       transition:background-color .16s ease,color .16s ease,opacity .16s ease;
