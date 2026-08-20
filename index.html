@@ -88,21 +88,16 @@
       color:var(--accent-deep);
     }
     @media (min-width:648px){
-      .glance-area{
+      .manage-area{
         min-height:0;
-        overflow-y:auto;
-        overscroll-behavior:contain;
-      }
-      .composer{
-        position:sticky;
-        bottom:0;
-        z-index:4;
-        flex:0 0 auto;
-        background:var(--paper);
+        overflow:hidden;
       }
       .manage-scroll{
-        flex:1 1 auto;
+        flex:1 1 0;
         min-height:0;
+        overflow-y:auto;
+        overflow-x:hidden;
+        overscroll-behavior:contain;
       }
     }
   </style>
