@@ -148,14 +148,24 @@ function parseTimeRange(text,baseDate,now,{dateExplicit=false,daily=false}={}){
 function cleanTaskText(text,removeParts){
   let out=text;
   const unique=[...new Set(removeParts.filter(Boolean))].map(x=>String(x).trim()).filter(Boolean).sort((a,b)=>b.length-a.length);
+  const hasParsedDirective=unique.length>0;
+  const stripDirectivePrefix=()=>{
+    if(!hasParsedDirective) return;
+    out=out.replace(/^\s*(?:接下来(?:的)?|从现在(?:开始|起)?|现在(?:开始|起))\s*/,"");
+  };
   for(const p of unique) out=out.replace(p," ");
+  stripDirectivePrefix();
   out=out.replace(/^\s*(?:(?:的)?时候|到时候|时|左右|前后|开始|结束)\s*/,"").replace(/^\s*的(?=\s|$)/," ");
   for(let i=0;i<5;i++){
     const before=out;
     out=out.replace(/^\s*(?:请|麻烦)\s*/,"").replace(/^\s*(?:帮我(?:记得)?|记得|别忘了|不要忘记)\s*/,"").replace(/^\s*(?:提醒我(?:一下)?|提醒(?:我)?(?:一下)?)\s*/,"").replace(/^\s*(?:我要|我想要)\s*/,"");
+    stripDirectivePrefix();
+    out=out.replace(/^\s*的(?=\s|$)/," ");
     if(out===before) break;
   }
-  out=out.replace(/\s*(?:提醒我(?:一下)?|提醒(?:我)?(?:一下)?)\s*/g," ").replace(/^\s*(?:(?:的)?时候|到时候|时|左右|前后|开始|结束)\s*/,"").replace(/^\s*(?:每天)?\s*(?:从)?\s*(?:到|至)?\s*/,"").replace(/^[,，。；;、：:\s]+|[,，。；;、：:\s]+$/g,"").replace(/\s+/g," ").trim();
+  out=out.replace(/\s*(?:提醒我(?:一下)?|提醒(?:我)?(?:一下)?)\s*/g," ");
+  stripDirectivePrefix();
+  out=out.replace(/^\s*(?:(?:的)?时候|到时候|时|左右|前后|开始|结束)\s*/,"").replace(/^\s*(?:每天)?\s*(?:从)?\s*(?:到|至)?\s*/,"").replace(/^[,，。；;、：:\s]+|[,，。；;、：:\s]+$/g,"").replace(/\s+/g," ").trim();
   return out || text.trim();
 }
 
