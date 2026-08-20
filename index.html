@@ -87,6 +87,46 @@
       background:color-mix(in srgb,var(--accent) 10%,var(--paper));
       color:var(--accent-deep);
     }
+    .next-preview-list{
+      margin-top:10px;
+      padding-top:8px;
+      border-top:1px solid var(--line);
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+    .next-preview-row{
+      display:grid;
+      grid-template-columns:minmax(0,1fr) auto;
+      gap:10px;
+      align-items:baseline;
+      min-width:0;
+    }
+    .next-preview-title{
+      min-width:0;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      font-size:12.5px;
+      line-height:1.4;
+      color:var(--text);
+      font-weight:500;
+    }
+    .next-preview-meta{
+      white-space:nowrap;
+      font-size:10.8px;
+      line-height:1.4;
+      color:var(--meta);
+      font-variant-numeric:tabular-nums;
+    }
+    #todayList{
+      max-height:350px;
+      overflow-y:auto;
+      overflow-x:hidden;
+      overscroll-behavior:contain;
+      scrollbar-gutter:stable;
+      padding-right:3px;
+    }
     @media (min-width:648px){
       .manage-area{
         min-height:0;
