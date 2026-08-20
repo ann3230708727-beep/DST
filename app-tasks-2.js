@@ -70,14 +70,25 @@ function taskRow(t, {showPin=false, editable=false,variant=""}={}){
 }
 function emptyHtml(tab){ return `<div class="empty"><strong>${tab==="today"?"今天没什么事":"这里还空着"}</strong></div>`; }
 function minutesNow(){ const n=new Date(); return n.getHours()*60+n.getMinutes()+n.getSeconds()/60; }
-function nextDue(){
+function upcomingDue(limit=3){
   const now=Date.now();
-  return activeToday().map(t=>{ const d=dueDateForTask(t); return d?{t,diff:(d.getTime()-now)/60000}:null; }).filter(Boolean).filter(x=>x.diff>=-15 && x.diff<=60).sort((a,b)=>{ const aNow=a.diff<=0,bNow=b.diff<=0; if(aNow!==bNow) return aNow?-1:1; return Math.abs(a.diff)-Math.abs(b.diff); })[0] || null;
+  return activeToday().map(t=>{ const d=dueDateForTask(t); return d?{t,d,diff:(d.getTime()-now)/60000}:null; }).filter(Boolean).filter(x=>x.diff>=-15).sort((a,b)=>a.d-b.d).slice(0,limit);
+}
+function upcomingLabel(diff){
+  if(diff<=0) return "现在";
+  if(diff<60) return `${Math.max(1,Math.ceil(diff))} 分钟后`;
+  const hours=Math.floor(diff/60),mins=Math.ceil(diff-hours*60);
+  return mins?`${hours} 小时 ${mins} 分钟后`:`${hours} 小时后`;
 }
 function renderNext(){
-  const x=nextDue(), box=$("#nextCard"); if(!x){ box.innerHTML=""; return; }
-  const t=x.t,left=Math.ceil(x.diff),label=x.diff<=0?"现在":`${Math.max(1,left)} 分钟后`;
-  box.innerHTML=`<div class="next-block"><div class="next-kicker">接下来</div><div class="next-line"><div class="next-title">${escapeHtml(t.text)}</div><div class="next-meta">${escapeHtml(t.plannedTime || "")} · ${label}</div></div></div>`;
+  const list=upcomingDue(3),box=$("#nextCard");
+  if(!list.length){ box.innerHTML=""; return; }
+  const first=list[0],secondary=list.slice(1);
+  box.innerHTML=`<div class="next-block">
+    <div class="next-kicker">接下来</div>
+    <div class="next-line"><div class="next-title">${escapeHtml(first.t.text)}</div><div class="next-meta">${escapeHtml(first.t.plannedTime||"")} · ${escapeHtml(upcomingLabel(first.diff))}</div></div>
+    ${secondary.length?`<div class="next-preview-list">${secondary.map(x=>`<div class="next-preview-row"><span class="next-preview-title">${escapeHtml(x.t.text)}</span><span class="next-preview-meta">${escapeHtml(x.t.plannedTime||"")} · ${escapeHtml(upcomingLabel(x.diff))}</span></div>`).join("")}</div>`:""}
+  </div>`;
 }
 function renderLater(){
   const dated=sortDatedLater(datedLater()),undated=sortUndatedLater(undatedLater());
