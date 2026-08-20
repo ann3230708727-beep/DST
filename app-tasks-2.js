@@ -18,6 +18,14 @@ function recentCompletedDayLabel(day){
   const wd=["周日","周一","周二","周三","周四","周五","周六"][d.getDay()];
   return `${displayDate(day)} · ${wd}`;
 }
+function completedEventStamp(iso){
+  if(!iso) return "";
+  const d=new Date(iso);
+  if(Number.isNaN(d.getTime())) return "";
+  const day=localDate(d),today=localDate(),yesterday=localDate(addDays(new Date(),-1));
+  const label=day===today?"今天":day===yesterday?"昨天":displayDate(day);
+  return `${label} ${hmFromISO(iso)}`;
+}
 function renderRecentCompleted(){
   const list=recentCompletedTasks();
   const entry=$("#recentCompletedEntry");
@@ -34,7 +42,7 @@ function renderRecentCompleted(){
       <div class="recent-completed-label">${escapeHtml(recentCompletedDayLabel(day))}</div>
       ${tasks.map(t=>`<div class="recent-completed-row">
         <div class="completed-mark">✓</div><div><div class="recent-completed-title">${escapeHtml(t.text)}</div>
-        <div class="recent-completed-meta">完成于 ${escapeHtml(hmFromISO(t.completedAt))}${t.createdAt?` · 添加于 ${escapeHtml(hmFromISO(t.createdAt))}`:""}</div></div>
+        <div class="recent-completed-meta">${escapeHtml(completedEventStamp(t.completedAt))} 完成${t.createdAt?` · ${escapeHtml(completedEventStamp(t.createdAt))} 添加`:""}</div></div>
       </div>`).join("")}
     </div>`).join("");
 }
@@ -84,7 +92,7 @@ let completedExpanded=false;
 function renderCompleted(){
   const list=completedToday(),section=$("#completedSection"),box=$("#completedList"),toggle=$("#completedToggle"); if(!section||!box||!toggle) return;
   section.classList.toggle("hidden",list.length===0); $("#completedHeading").textContent=`已完成 ${list.length}`; toggle.classList.toggle("open",completedExpanded); toggle.setAttribute("aria-expanded",completedExpanded?"true":"false"); box.classList.toggle("hidden",!completedExpanded);
-  box.innerHTML=list.map(t=>`<div class="completed-row"><div class="completed-mark">✓</div><div><div class="completed-title">${escapeHtml(t.text)}</div><div class="completed-meta">完成于 ${escapeHtml(hmFromISO(t.completedAt))}${t.createdAt?` · 添加于 ${escapeHtml(hmFromISO(t.createdAt))}`:""}</div></div><button class="btn" data-restore-completed="${t.id}">恢复</button></div>`).join("");
+  box.innerHTML=list.map(t=>`<div class="completed-row"><div class="completed-mark">✓</div><div><div class="completed-title">${escapeHtml(t.text)}</div><div class="completed-meta">${escapeHtml(completedEventStamp(t.completedAt))} 完成${t.createdAt?` · ${escapeHtml(completedEventStamp(t.createdAt))} 添加`:""}</div></div><button class="btn" data-restore-completed="${t.id}">恢复</button></div>`).join("");
   $$('[data-restore-completed]').forEach(btn=>btn.onclick=()=>restoreCompleted(btn.dataset.restoreCompleted,"completed_list"));
 }
 function restoreCompleted(id,source="undo"){ const t=state.tasks.find(x=>x.id===id); if(!t||t.status!=="completed") return; t.status="active";t.completedAt=null;logEvent(t,"completion_undone",{detail:source});saveState();render();toast("已恢复为未完成"); }
