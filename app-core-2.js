@@ -126,9 +126,18 @@ function inferClockRange(startParts,endParts,baseDate,now,{dateExplicit=false,da
 }
 
 function parseTimeRange(text,baseDate,now,{dateExplicit=false,daily=false}={}){
+  const source=String(text||"");
   const expr=clockExpressionSource();
+  const nowRe=new RegExp(`(?:从\\s*)?现在\\s*(?:开始\\s*)?(?:到|至|—|－|-|~|～)\\s*(${expr})`);
+  const nowMatch=source.match(nowRe);
+  if(nowMatch){
+    const endParts=parseClockParts(nowMatch[1]);
+    const startParts={rawHour:now.getHours(),minute:now.getMinutes(),daypart:"",explicit24:true,colon:true};
+    const inferred=inferClockRange(startParts,endParts,baseDate,now,{dateExplicit,daily});
+    if(inferred) return {...inferred,matched:nowMatch[0],daily:/每天/.test(nowMatch[0])};
+  }
   const re=new RegExp(`(?:每天\\s*)?(?:从\\s*)?(${expr})\\s*(?:开始\\s*)?(?:到|至|—|－|-|~|～)\\s*(${expr})`);
-  const m=String(text||"").match(re);
+  const m=source.match(re);
   if(!m) return null;
   const startParts=parseClockParts(m[1]), endParts=parseClockParts(m[2]);
   const inferred=inferClockRange(startParts,endParts,baseDate,now,{dateExplicit,daily});
