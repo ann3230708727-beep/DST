@@ -87,6 +87,24 @@
       background:color-mix(in srgb,var(--accent) 10%,var(--paper));
       color:var(--accent-deep);
     }
+    @media (min-width:648px){
+      .glance-area{
+        min-height:0;
+        overflow-y:auto;
+        overscroll-behavior:contain;
+      }
+      .composer{
+        position:sticky;
+        bottom:0;
+        z-index:4;
+        flex:0 0 auto;
+        background:var(--paper);
+      }
+      .manage-scroll{
+        flex:1 1 auto;
+        min-height:0;
+      }
+    }
   </style>
 </head>
 <body>
