@@ -28,7 +28,6 @@
   </script>
   <style>
     .task{isolation:isolate}
-    .task:not(:has(.task-meta)){min-height:64px}
     .task:hover{background:transparent}
     .task::before{
       content:"";
@@ -39,6 +38,9 @@
       background:transparent;
       pointer-events:none;
       transition:background-color .18s ease;
+    }
+    .task:not(:has(.task-meta))::before{
+      inset:-1px 0;
     }
     .task:hover::before{
       background:color-mix(in srgb,var(--accent) 8%,var(--paper));
