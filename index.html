@@ -26,6 +26,24 @@
       );
     })();
   </script>
+  <style>
+    .task{
+      border-radius:11px;
+      transition:background-color .18s ease,border-color .18s ease;
+    }
+    .task:hover{
+      background:color-mix(in srgb,var(--accent) 7%,var(--paper));
+      border-top-color:transparent;
+    }
+    .pin,.task-more{
+      border-radius:999px;
+      transition:background-color .16s ease,color .16s ease,opacity .16s ease;
+    }
+    .pin:hover,.task-more:hover{
+      background:color-mix(in srgb,var(--accent) 10%,var(--paper));
+      color:var(--accent-deep);
+    }
+  </style>
 </head>
 <body>
   <script>
