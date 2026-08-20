@@ -27,20 +27,30 @@
     })();
   </script>
   <style>
-    .task{
+    .task{isolation:isolate}
+    .task:hover{background:transparent}
+    .task::before{
+      content:"";
+      position:absolute;
+      inset:4px 0;
+      z-index:0;
+      border-radius:10px;
+      background:transparent;
+      pointer-events:none;
       transition:background-color .18s ease;
     }
-    .task:hover{
-      background:color-mix(in srgb,var(--accent) 7%,var(--paper));
+    .task:hover::before{
+      background:color-mix(in srgb,var(--accent) 8%,var(--paper));
     }
-    :root[data-theme="dark"] .task:hover{
-      background:color-mix(in srgb,var(--accent) 16%,var(--paper));
+    :root[data-theme="dark"] .task:hover::before{
+      background:color-mix(in srgb,var(--accent) 18%,var(--paper));
     }
     @media (prefers-color-scheme:dark){
-      :root:not([data-theme="light"]) .task:hover{
-        background:color-mix(in srgb,var(--accent) 16%,var(--paper));
+      :root:not([data-theme="light"]) .task:hover::before{
+        background:color-mix(in srgb,var(--accent) 18%,var(--paper));
       }
     }
+    .task>*{position:relative;z-index:1}
     .pin,.task-more{
       border-radius:999px;
       transition:background-color .16s ease,color .16s ease,opacity .16s ease;
