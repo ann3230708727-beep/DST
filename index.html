@@ -28,12 +28,18 @@
   </script>
   <style>
     .task{
-      border-radius:11px;
-      transition:background-color .18s ease,border-color .18s ease;
+      transition:background-color .18s ease;
     }
     .task:hover{
       background:color-mix(in srgb,var(--accent) 7%,var(--paper));
-      border-top-color:transparent;
+    }
+    :root[data-theme="dark"] .task:hover{
+      background:color-mix(in srgb,var(--accent) 16%,var(--paper));
+    }
+    @media (prefers-color-scheme:dark){
+      :root:not([data-theme="light"]) .task:hover{
+        background:color-mix(in srgb,var(--accent) 16%,var(--paper));
+      }
     }
     .pin,.task-more{
       border-radius:999px;
