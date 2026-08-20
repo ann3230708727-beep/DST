@@ -28,6 +28,7 @@
   </script>
   <style>
     .task{isolation:isolate}
+    .task:not(:has(.task-meta)){min-height:64px}
     .task:hover{background:transparent}
     .task::before{
       content:"";
