@@ -124,4 +124,13 @@ function render(){
   const today=sortToday(activeToday()),anchors=today.filter(t=>t.anchor),others=today.filter(t=>!t.anchor); $("#anchorSection").classList.toggle("hidden",anchors.length===0); $("#glanceAnchorList").innerHTML=anchors.map(t=>taskRow(t,{showPin:true,editable:true,variant:"glance-task"})).join(""); $("#todayList").innerHTML=others.length?others.map(t=>taskRow(t,{showPin:true,editable:true})).join(""):today.length?'<div class="empty compact"><strong>这里还空着</strong></div>':emptyHtml("today"); $("#todayHeading").textContent="其他";
   renderLater();renderNext();$("#glanceEmpty").classList.toggle("hidden",today.length>0||!!$("#nextCard").innerHTML);renderPrompts();renderCompleted();renderRecentCompleted();updateRecentRemovedBadge();renderInputNotices();
 }
-function renderPrompts(){ const stale=staleTasks(); $("#stalePrompt").classList.toggle("hidden",!stale.length); $("#stalePromptText").textContent=stale.length?`有 ${stale.length} 件之前留下的事，要重新安排吗？`:""; const unfinished=activeToday().filter(t=>!Number(t.repeatMinutes)); const evening=new Date().getHours()>=REVIEW_HOUR&&state.settings.eveningReview&&unfinished.length>0; $("#reviewPrompt").classList.toggle("hidden",!evening); $("#reviewPromptText").textContent=evening?`今天还有 ${unfinished.length} 件事，要收个尾吗？`:""; }
+function renderPrompts(){
+  const stale=staleTasks();
+  const hasStale=stale.length>0;
+  $("#stalePrompt").classList.toggle("hidden",!hasStale);
+  $("#stalePromptText").textContent=hasStale?`有 ${stale.length} 件之前留下的事，要重新安排吗？`:"";
+  const unfinished=activeToday().filter(t=>!Number(t.repeatMinutes));
+  const evening=new Date().getHours()>=REVIEW_HOUR&&state.settings.eveningReview&&unfinished.length>0&&!hasStale;
+  $("#reviewPrompt").classList.toggle("hidden",!evening);
+  $("#reviewPromptText").textContent=evening?`今天还有 ${unfinished.length} 件事，要收个尾吗？`:"";
+}
