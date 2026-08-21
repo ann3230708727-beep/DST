@@ -39,6 +39,35 @@ function extractEventText(text,removeParts){
   return out || String(text||"").trim();
 }
 
+function preferFutureBareRange(range,text,baseDate,now,daily=false){
+  if(!range || daily || localDate(baseDate)!==localDate(now)) return range;
+  const expr=clockExpressionSource();
+  const re=new RegExp(`(?:从\\s*)?(${expr})\\s*(?:开始\\s*)?(?:到|至|—|－|-|~|～)\\s*(${expr})`);
+  const m=String(text||"").match(re);
+  if(!m) return range;
+  const startParts=parseClockParts(m[1]),endParts=parseClockParts(m[2]);
+  if(!startParts||!endParts||startParts.daypart||endParts.daypart||startParts.explicit24||endParts.explicit24) return range;
+  if(startParts.rawHour<1||startParts.rawHour>12||endParts.rawHour<1||endParts.rawHour>12) return range;
+  if(range.start>now) return range;
+
+  const day0=new Date(now.getFullYear(),now.getMonth(),now.getDate(),0,0,0,0);
+  const starts=clockCandidateHours(startParts),ends=clockCandidateHours(endParts),candidates=[];
+  for(const sh of starts){
+    const start=new Date(day0);start.setHours(sh,startParts.minute,0,0);
+    for(const eh of ends){
+      const end=new Date(day0);end.setHours(eh,endParts.minute,0,0);
+      if(end<=start) continue;
+      const duration=(end-start)/60000;
+      if(duration<=0||duration>6*60||start<=now) continue;
+      candidates.push({start,end,duration});
+    }
+  }
+  if(!candidates.length) return range;
+  candidates.sort((a,b)=>a.start-b.start||a.duration-b.duration);
+  const best=candidates[0];
+  return {...range,start:best.start,end:best.end,startTime:`${String(best.start.getHours()).padStart(2,"0")}:${String(best.start.getMinutes()).padStart(2,"0")}`,endTime:`${String(best.end.getHours()).padStart(2,"0")}:${String(best.end.getMinutes()).padStart(2,"0")}`,endNextDay:false};
+}
+
 function parseInput(raw,now=new Date()){
   const original=raw.trim();
   let text=original, date=null, time=null, dueAt=null, relativeMinutes=null;
@@ -49,26 +78,57 @@ function parseInput(raw,now=new Date()){
   const remember=s=>{ if(s) removeParts.push(s); };
   let dateExplicit=false;
 
-  let rp=text.match(/每(?:隔)?\s*半\s*个?\s*小时/);
-  if(rp){ repeatMinutes=30; repeatLabel="每30分钟"; remember(rp[0]); }
-  else{
-    rp=text.match(/每(?:隔)?\s*([0-9零〇一二两三四五六七八九十百\s]+?)\s*分钟/);
-    if(rp){ repeatMinutes=cnNumber(rp[1]); repeatLabel=`每${repeatMinutes}分钟`; remember(rp[0]); }
-    else{
-      rp=text.match(/每(?:隔)?\s*([0-9零〇一二两三四五六七八九十百\s]+?)\s*个?\s*小时/);
-      if(rp){ repeatMinutes=cnNumber(rp[1])*60; repeatLabel=repeatMinutes%60===0?`每${repeatMinutes/60}小时`:`每${repeatMinutes}分钟`; remember(rp[0]); }
+  const num="[0-9零〇一二两三四五六七八九十百\\s]+";
+  const durationPrefix=text.match(new RegExp(`接下来(?:的)?\\s*(${num})\\s*分钟(?:内)?`));
+  const countSuffix=text.match(new RegExp(`(${num})\\s*次(?:提醒)?\\s*$`));
+  const hasReminderCommand=/(?:提醒我|提醒|通知我|叫我)/.test(text);
+  let durationCountReminder=false;
+  if(durationPrefix&&countSuffix&&hasReminderCommand){
+    const duration=cnNumber(durationPrefix[1]);
+    const count=cnNumber(countSuffix[1]);
+    const interval=duration/count;
+    if(Number.isFinite(duration)&&duration>0&&Number.isFinite(count)&&count>0&&Number.isFinite(interval)&&interval>=1){
+      durationCountReminder=true;
+      repeatMinutes=interval;
+      repeatLabel=Number.isInteger(interval)?`每${interval}分钟`:`每${interval.toFixed(1)}分钟`;
+      remember(durationPrefix[0]);
+      remember(countSuffix[0]);
+      const start=new Date(now.getTime()+interval*60000);
+      const end=new Date(now.getTime()+duration*60000);
+      repeatWindowStartAt=localDateTimeISO(start);
+      repeatWindowEndAt=localDateTimeISO(end);
+      date=localDate(start);
+      time=`${String(start.getHours()).padStart(2,"0")}:${String(start.getMinutes()).padStart(2,"0")}`;
+      dueAt=localDateTimeISO(start);
+      dateExplicit=true;
     }
   }
-  if(!Number.isFinite(repeatMinutes) || repeatMinutes<1) repeatMinutes=0;
 
-  let relTime=text.match(/半\s*个?\s*小时\s*(?:后|之后|以后)/);
-  if(relTime){ relativeMinutes=30; remember(relTime[0]); }
-  else{
-    relTime=text.match(/([0-9零〇一二两三四五六七八九十百\s]+?)\s*分钟\s*(?:后|之后|以后)/);
-    if(relTime){ relativeMinutes=cnNumber(relTime[1]); remember(relTime[0]); }
+  if(!durationCountReminder){
+    let rp=text.match(/每(?:隔)?\s*半\s*个?\s*小时/);
+    if(rp){ repeatMinutes=30; repeatLabel="每30分钟"; remember(rp[0]); }
     else{
-      relTime=text.match(/([0-9零〇一二两三四五六七八九十百\s]+?)\s*个?\s*小时\s*(?:后|之后|以后)/);
-      if(relTime){ relativeMinutes=cnNumber(relTime[1])*60; remember(relTime[0]); }
+      rp=text.match(/每(?:隔)?\s*([0-9零〇一二两三四五六七八九十百\s]+?)\s*分钟/);
+      if(rp){ repeatMinutes=cnNumber(rp[1]); repeatLabel=`每${repeatMinutes}分钟`; remember(rp[0]); }
+      else{
+        rp=text.match(/每(?:隔)?\s*([0-9零〇一二两三四五六七八九十百\s]+?)\s*个?\s*小时/);
+        if(rp){ repeatMinutes=cnNumber(rp[1])*60; repeatLabel=repeatMinutes%60===0?`每${repeatMinutes/60}小时`:`每${repeatMinutes}分钟`; remember(rp[0]); }
+      }
+    }
+    if(!Number.isFinite(repeatMinutes) || repeatMinutes<1) repeatMinutes=0;
+  }
+
+  let relTime=null;
+  if(!durationCountReminder){
+    relTime=text.match(/半\s*个?\s*小时\s*(?:后|之后|以后)/);
+    if(relTime){ relativeMinutes=30; remember(relTime[0]); }
+    else{
+      relTime=text.match(/([0-9零〇一二两三四五六七八九十百\s]+?)\s*分钟\s*(?:后|之后|以后)/);
+      if(relTime){ relativeMinutes=cnNumber(relTime[1]); remember(relTime[0]); }
+      else{
+        relTime=text.match(/([0-9零〇一二两三四五六七八九十百\s]+?)\s*个?\s*小时\s*(?:后|之后|以后)/);
+        if(relTime){ relativeMinutes=cnNumber(relTime[1])*60; remember(relTime[0]); }
+      }
     }
   }
 
@@ -109,7 +169,8 @@ function parseInput(raw,now=new Date()){
 
     const dailyHint=/每天/.test(text);
     const baseDate=date?new Date(`${date}T00:00:00`):new Date(now.getFullYear(),now.getMonth(),now.getDate());
-    const range=parseTimeRange(text,baseDate,now,{dateExplicit,daily:dailyHint});
+    let range=parseTimeRange(text,baseDate,now,{dateExplicit,daily:dailyHint});
+    range=preferFutureBareRange(range,text,baseDate,now,dailyHint);
     if(range){
       remember(range.matched); repeatDaily=dailyHint || range.daily; repeatStartTime=range.startTime; repeatEndTime=range.endTime; repeatEndNextDay=range.endNextDay;
       if(repeatMinutes>0 && repeatDaily){
