@@ -84,12 +84,32 @@
     .check.done{
       background:transparent;
       border-color:transparent;
-      color:var(--accent-deep);
+      color:transparent;
+      font-size:0;
     }
     .check.done::before{
       background:color-mix(in srgb,var(--accent) 7%,transparent);
       border:1.7px solid var(--accent);
       transform:translate(-50%,-50%) scale(.98);
+    }
+    .check.done::after{
+      content:"";
+      position:absolute;
+      left:50%;
+      top:50%;
+      width:7px;
+      height:4px;
+      border-left:1.45px solid var(--accent-deep);
+      border-bottom:1.45px solid var(--accent-deep);
+      transform:translate(-48%,-62%) rotate(-45deg) scale(.88);
+      transform-origin:center;
+      opacity:1;
+      pointer-events:none;
+      animation:checkIn .16s ease-out;
+    }
+    @keyframes checkIn{
+      from{opacity:0;transform:translate(-48%,-62%) rotate(-45deg) scale(.62)}
+      to{opacity:1;transform:translate(-48%,-62%) rotate(-45deg) scale(.88)}
     }
     .task-title{font-size:14.5px}
     .pin,.task-more{
