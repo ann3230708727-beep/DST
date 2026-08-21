@@ -1,3 +1,44 @@
+function extractEventText(text,removeParts){
+  let out=String(text||"");
+  const spans=[...new Set((removeParts||[]).filter(Boolean).map(x=>String(x).trim()).filter(Boolean))].sort((a,b)=>b.length-a.length);
+  const hasTemporalSlots=spans.length>0;
+  for(const span of spans) out=out.replace(span," ");
+
+  const trimEdges=()=>{
+    out=out.replace(/^[,，。；;、：:\s]+|[,，。；;、：:\s]+$/g,"").replace(/\s+/g," ").trim();
+  };
+  const stripLeadingConnectors=()=>{
+    if(!hasTemporalSlots) return;
+    out=out.replace(/^\s*(?:(?:的)?时候|到时候|时|左右|前后|开始|结束)\s*/,"");
+    out=out.replace(/^\s*(?:接下来(?:的)?|从现在(?:开始|起)?|现在(?:开始|起))\s*/,"");
+    out=out.replace(/^\s*(?:每天)?\s*(?:从)?\s*(?:到|至)?\s*/,"");
+  };
+  const stripCommandShell=()=>{
+    out=out
+      .replace(/^\s*(?:请|麻烦)\s*/,"")
+      .replace(/^\s*(?:帮我(?:记得)?|记得|别忘了|不要忘记)\s*/,"")
+      .replace(/^\s*(?:提醒我(?:一下)?|提醒(?:我)?(?:一下)?|通知我(?:一下)?)\s*/,"")
+      .replace(/^\s*(?:叫我(?:做)?(?:一次|一下)?|叫我)\s*/,"")
+      .replace(/^\s*(?:我要|我想要)\s*/,"");
+  };
+
+  trimEdges();
+  for(let i=0;i<6;i++){
+    const before=out;
+    stripLeadingConnectors();
+    trimEdges();
+    stripCommandShell();
+    trimEdges();
+    if(out===before) break;
+  }
+
+  if(hasTemporalSlots){
+    out=out.replace(/\s*(?:提醒我(?:一下)?|提醒(?:我)?(?:一下)?|通知我(?:一下)?|叫我(?:做)?(?:一次|一下)?)\s*/g," ");
+    trimEdges();
+  }
+  return out || String(text||"").trim();
+}
+
 function parseInput(raw,now=new Date()){
   const original=raw.trim();
   let text=original, date=null, time=null, dueAt=null, relativeMinutes=null;
@@ -81,7 +122,8 @@ function parseInput(raw,now=new Date()){
         else{ date=localDate(range.start); repeatWindowEnded=true; }
       }else{ date=localDate(range.start); time=range.startTime; dueAt=localDateTimeISO(range.start); }
     }else{
-      const clock=parseClock(text,baseDate,now,dateExplicit);
+      const inferBareTimeForToday=!dateExplicit || date===today;
+      const clock=parseClock(text,baseDate,now,!inferBareTimeForToday);
       if(clock.time){ time=clock.time; remember(clock.matched); if(!date) date=today; if(clock.rollTomorrow) date=localDate(addDays(now,1)); dueAt=localDateTimeISO(new Date(`${date}T${time}:00`)); }
     }
   }
@@ -90,8 +132,8 @@ function parseInput(raw,now=new Date()){
     const target=new Date(now.getTime()+repeatMinutes*60000); date=localDate(target); time=`${String(target.getHours()).padStart(2,"0")}:${String(target.getMinutes()).padStart(2,"0")}`; dueAt=localDateTimeISO(target);
   }
   if(repeatDaily && /每天/.test(text)) remember("每天");
-  const cleaned=cleanTaskText(text,removeParts);
-  return {text:cleaned, rawText:original, plannedDate:date, plannedTime:time, dueAt, relativeMinutes, repeatMinutes, repeatLabel, repeatDaily, repeatStartTime, repeatEndTime, repeatEndNextDay, repeatWindowStartAt, repeatWindowEndAt, repeatWindowEnded};
+  const eventText=extractEventText(text,removeParts);
+  return {text:eventText, rawText:original, plannedDate:date, plannedTime:time, dueAt, relativeMinutes, repeatMinutes, repeatLabel, repeatDaily, repeatStartTime, repeatEndTime, repeatEndNextDay, repeatWindowStartAt, repeatWindowEndAt, repeatWindowEnded};
 }
 
 function isTodayTask(t){
