@@ -107,6 +107,43 @@
       pointer-events:none;
       animation:checkIn .16s ease-out;
     }
+    .completed-mark{
+      width:27px;
+      height:27px;
+      min-width:27px;
+      border:0;
+      border-radius:0;
+      background:transparent;
+      color:transparent;
+      font-size:0;
+      position:relative;
+      display:block;
+    }
+    .completed-mark::before{
+      content:"";
+      width:21px;
+      height:21px;
+      border:1.7px solid var(--accent);
+      border-radius:50%;
+      background:color-mix(in srgb,var(--accent) 7%,transparent);
+      position:absolute;
+      left:50%;
+      top:50%;
+      transform:translate(-50%,-50%) scale(.98);
+    }
+    .completed-mark::after{
+      content:"";
+      position:absolute;
+      left:50%;
+      top:50%;
+      width:7px;
+      height:4px;
+      border-left:1.45px solid var(--accent-deep);
+      border-bottom:1.45px solid var(--accent-deep);
+      transform:translate(-48%,-62%) rotate(-45deg) scale(.88);
+      transform-origin:center;
+      pointer-events:none;
+    }
     @keyframes checkIn{
       from{opacity:0;transform:translate(-48%,-62%) rotate(-45deg) scale(.62)}
       to{opacity:1;transform:translate(-48%,-62%) rotate(-45deg) scale(.88)}
