@@ -60,6 +60,7 @@
       margin-left:3px;
       border:0;
       background:transparent;
+      color:var(--paper);
       position:relative;
     }
     .check::before{
@@ -73,11 +74,20 @@
       top:50%;
       transform:translate(-50%,-50%);
       background:transparent;
-      transition:border-color .16s ease,background-color .16s ease;
+      transition:border-color .16s ease,background-color .16s ease,transform .16s ease;
     }
     .check:hover{background:transparent}
     .check:hover::before{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
-    .check.done::before{background:var(--text);border-color:var(--text)}
+    .check.done{
+      background:transparent;
+      border-color:transparent;
+      color:var(--paper);
+    }
+    .check.done::before{
+      background:var(--accent);
+      border-color:var(--accent);
+      transform:translate(-50%,-50%) scale(.96);
+    }
     .task-title{font-size:14.5px}
     .pin,.task-more{
       border-radius:999px;
