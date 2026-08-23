@@ -21,8 +21,7 @@ const rootFiles = [
   "app-ui-1.js",
   "app-ui-2.js",
   "app-ui-3.js",
-  "manifest.webmanifest",
-  "sw.js"
+  "manifest.webmanifest"
 ];
 
 await rm(dist, { recursive: true, force: true });
@@ -36,12 +35,11 @@ for (const name of rootFiles) {
 const icons = resolve(repoRoot, "icons");
 if (existsSync(icons)) await cp(icons, resolve(dist, "icons"), { recursive: true });
 
-await cp(resolve(shellRoot, "shell-bridge.js"), resolve(dist, "shell-bridge.js"));
-
 const indexPath = resolve(dist, "index.html");
 let html = await readFile(indexPath, "utf8");
-const bridgeTag = '<script src="./shell-bridge.js"></script>';
-if (!html.includes(bridgeTag)) html = html.replace("</body>", `  ${bridgeTag}\n</body>`);
+const bridge = await readFile(resolve(shellRoot, "shell-bridge.js"), "utf8");
+const bridgeTag = `<script>\n${bridge}\n</script>`;
+html = html.replace("</body>", `  ${bridgeTag}\n</body>`);
 await writeFile(indexPath, html, "utf8");
 
-console.log("Windows shell web assets synced to desktop/windows/dist");
+console.log("Windows shell web assets synced to desktop/windows/dist (bridge inlined, service worker excluded)");
