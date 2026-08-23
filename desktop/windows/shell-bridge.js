@@ -34,58 +34,61 @@
     document.documentElement.dataset.windowsCollapsed = value ? "true" : "false";
   }
 
-  function applyPinVisual(btn, pinned) {
+  function pinButton() {
+    return document.querySelector('[data-shell-action="pin"]');
+  }
+
+  function applyPinVisual(pinned) {
+    const btn = pinButton();
+    if (!btn) return;
+    btn.disabled = false;
+    btn.removeAttribute("disabled");
     btn.classList.toggle("active", pinned);
     btn.title = pinned ? "取消置顶" : "置顶";
     btn.setAttribute("aria-label", btn.title);
     btn.setAttribute("aria-pressed", pinned ? "true" : "false");
   }
 
-  async function configurePinButton() {
-    const btn = document.querySelector("#windowPinBtn");
-    if (!btn) return false;
-    if (btn.dataset.windowsShellBound === "true") return true;
-
-    btn.dataset.windowsShellBound = "true";
-    btn.disabled = false;
-    btn.removeAttribute("disabled");
-
+  async function refreshPinState() {
     try {
-      const pinned = await core.invoke("pinned_state");
-      applyPinVisual(btn, !!pinned);
+      applyPinVisual(!!(await core.invoke("pinned_state")));
     } catch (error) {
       console.error("Could not read pinned state", error);
-      applyPinVisual(btn, false);
     }
-
-    btn.addEventListener("click", async event => {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      if (pinBusy) return;
-      pinBusy = true;
-      try {
-        const pinned = await core.invoke("toggle_pinned");
-        applyPinVisual(btn, !!pinned);
-      } catch (error) {
-        console.error("Could not toggle pinned state", error);
-      } finally {
-        pinBusy = false;
-      }
-    }, true);
-
-    return true;
   }
 
-  async function waitForUi() {
-    for (let i = 0; i < 80; i++) {
-      if (await configurePinButton()) return;
+  // Delegation is intentional: the Web UI is created asynchronously after this
+  // bridge loads, so binding to a button once during startup can miss it.
+  document.addEventListener("click", async e => {
+    const btn = e.target.closest?.('[data-shell-action="pin"]');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (pinBusy) return;
+    pinBusy = true;
+    try {
+      const pinned = await core.invoke("toggle_pinned");
+      applyPinVisual(!!pinned);
+    } catch (error) {
+      console.error("Could not toggle pinned state", error);
+    } finally {
+      pinBusy = false;
+    }
+  }, true);
+
+  async function waitForPinButton() {
+    for (let i = 0; i < 120; i++) {
+      if (pinButton()) {
+        await refreshPinState();
+        return;
+      }
       await new Promise(resolve => setTimeout(resolve, 50));
     }
   }
 
   window.addEventListener("DOMContentLoaded", async () => {
     ensureEdgeHandle();
-    await waitForUi();
+    await waitForPinButton();
     const dragRegion = document.querySelector(".brand-block");
     if (dragRegion) dragRegion.setAttribute("data-tauri-drag-region", "");
 
@@ -93,8 +96,11 @@
       await event.listen("windows-edge-state", ({ payload }) => {
         setCollapsedVisual(!!payload);
       });
+      await event.listen("windows-pin-state", ({ payload }) => {
+        applyPinVisual(!!payload);
+      });
     } catch (error) {
-      console.error("Could not listen for Windows edge state", error);
+      console.error("Could not listen for Windows shell state", error);
     }
   });
 })();
