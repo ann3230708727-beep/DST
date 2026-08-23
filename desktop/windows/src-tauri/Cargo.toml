@@ -1,0 +1,12 @@
+[package]
+name = "zuodianersha_windows"
+version = "2.7.1"
+description = "Windows shell for 做点儿啥"
+authors = ["Ann"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
