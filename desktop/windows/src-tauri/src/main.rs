@@ -8,11 +8,12 @@ use std::{
 use tauri::{Emitter, Manager, PhysicalPosition, WebviewWindow};
 
 const VISIBLE_EDGE_PX: i32 = 16;
-const EDGE_TRIGGER_PX: i32 = 24;
-const COLLAPSE_DELAY_MS: u64 = 650;
-const POINTER_POLL_MS: u64 = 50;
-const ANIMATION_MS: u64 = 190;
-const ANIMATION_FRAMES: u64 = 14;
+const EDGE_TRIGGER_PX: i32 = 32;
+const EDGE_Y_TOLERANCE_PX: i32 = 16;
+const COLLAPSE_DELAY_MS: u64 = 170;
+const POINTER_POLL_MS: u64 = 20;
+const ANIMATION_MS: u64 = 150;
+const ANIMATION_FRAMES: u64 = 12;
 
 static ANIMATION_GENERATION: AtomicU64 = AtomicU64::new(0);
 static COLLAPSED_STATE: AtomicBool = AtomicBool::new(false);
@@ -20,6 +21,7 @@ static PINNED_STATE: AtomicBool = AtomicBool::new(false);
 static WATCHER_STARTED: AtomicBool = AtomicBool::new(false);
 
 fn eased(t: f64) -> f64 {
+    // Smoothstep: quick but without abrupt starts/stops.
     t * t * (3.0 - 2.0 * t)
 }
 
@@ -67,10 +69,43 @@ async fn animate_edge(window: WebviewWindow, collapsed: bool) -> Result<(), Stri
         .map_err(|e| e.to_string())?
 }
 
+#[cfg(windows)]
+fn set_native_topmost(window: &WebviewWindow, topmost: bool) -> Result<(), String> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    };
+
+    let hwnd = window.hwnd().map_err(|e| e.to_string())?;
+    let insert_after = if topmost { HWND_TOPMOST } else { HWND_NOTOPMOST };
+    let ok = unsafe {
+        SetWindowPos(
+            hwnd.0,
+            insert_after,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        )
+    };
+    if ok == 0 {
+        return Err(std::io::Error::last_os_error().to_string());
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn set_native_topmost(window: &WebviewWindow, topmost: bool) -> Result<(), String> {
+    window.set_always_on_top(topmost).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn toggle_pinned(window: WebviewWindow) -> Result<bool, String> {
     let next = !PINNED_STATE.load(Ordering::SeqCst);
+
+    // Keep Tauri's state in sync, then enforce the Windows z-order directly.
     window.set_always_on_top(next).map_err(|e| e.to_string())?;
+    set_native_topmost(&window, next)?;
     PINNED_STATE.store(next, Ordering::SeqCst);
 
     if next && COLLAPSED_STATE.load(Ordering::SeqCst) {
@@ -84,10 +119,8 @@ async fn toggle_pinned(window: WebviewWindow) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn pinned_state(window: WebviewWindow) -> Result<bool, String> {
-    let actual = window.is_always_on_top().map_err(|e| e.to_string())?;
-    PINNED_STATE.store(actual, Ordering::SeqCst);
-    Ok(actual)
+fn pinned_state() -> bool {
+    PINNED_STATE.load(Ordering::SeqCst)
 }
 
 #[cfg(windows)]
@@ -137,12 +170,14 @@ fn start_native_edge_watcher(window: WebviewWindow) {
 
             let work = monitor.work_area();
             let right = work.position.x + work.size.width as i32;
-            let within_y = cursor_y >= pos.y && cursor_y <= pos.y + size.height as i32;
+            let top = pos.y - EDGE_Y_TOLERANCE_PX;
+            let bottom = pos.y + size.height as i32 + EDGE_Y_TOLERANCE_PX;
+            let within_y = cursor_y >= top && cursor_y <= bottom;
 
             if COLLAPSED_STATE.load(Ordering::SeqCst) {
                 outside_since = None;
                 let in_trigger = cursor_x >= right - EDGE_TRIGGER_PX
-                    && cursor_x <= right
+                    && cursor_x <= right + 1
                     && within_y;
                 if in_trigger {
                     let _ = animate_window(window.clone(), false);
@@ -151,7 +186,8 @@ fn start_native_edge_watcher(window: WebviewWindow) {
             }
 
             let within_x = cursor_x >= pos.x && cursor_x <= pos.x + size.width as i32;
-            if within_x && within_y {
+            let within_window_y = cursor_y >= pos.y && cursor_y <= pos.y + size.height as i32;
+            if within_x && within_window_y {
                 outside_since = None;
                 continue;
             }
@@ -180,6 +216,7 @@ fn main() {
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_always_on_top(false);
+                let _ = set_native_topmost(&window, false);
                 PINNED_STATE.store(false, Ordering::SeqCst);
                 COLLAPSED_STATE.store(false, Ordering::SeqCst);
                 start_native_edge_watcher(window);
