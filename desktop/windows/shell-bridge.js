@@ -38,6 +38,30 @@
     return document.querySelector('[data-shell-action="pin"]');
   }
 
+  function ensurePinVisualStyle() {
+    if (document.querySelector("#windowsPinVisualStyle")) return;
+    const style = document.createElement("style");
+    style.id = "windowsPinVisualStyle";
+    style.textContent = `
+      [data-shell-action="pin"] { position: relative; }
+      [data-shell-action="pin"].active svg { opacity: 0; }
+      [data-shell-action="pin"].active::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 16px;
+        height: 16px;
+        transform: translate(-50%, -50%);
+        background: var(--accent-deep, #647f6d);
+        -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='black' d='M5 1.5h6l-.7 1.45v3.1l1.9 1.9v1.3H8.7v4.15L8 14.5l-.7-1.1V9.25H3.8v-1.3l1.9-1.9v-3.1L5 1.5Z'/%3E%3C/svg%3E") center / contain no-repeat;
+        mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='black' d='M5 1.5h6l-.7 1.45v3.1l1.9 1.9v1.3H8.7v4.15L8 14.5l-.7-1.1V9.25H3.8v-1.3l1.9-1.9v-3.1L5 1.5Z'/%3E%3C/svg%3E") center / contain no-repeat;
+        pointer-events: none;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   function enablePinButton() {
     const btn = pinButton();
     if (!btn) return null;
@@ -48,6 +72,7 @@
   }
 
   function applyPinVisual(pinned) {
+    ensurePinVisualStyle();
     const btn = enablePinButton();
     if (!btn) return;
     btn.classList.toggle("active", pinned);
@@ -100,6 +125,7 @@
     if (enablePinButton()) pinObserver.disconnect();
   });
   pinObserver.observe(document.documentElement, { childList: true, subtree: true });
+  ensurePinVisualStyle();
   enablePinButton();
 
   document.addEventListener("click", async e => {
@@ -135,6 +161,7 @@
 
   window.addEventListener("DOMContentLoaded", async () => {
     ensureEdgeHandle();
+    ensurePinVisualStyle();
     await waitForPinButton();
     const dragRegion = document.querySelector(".brand-block");
     if (dragRegion) dragRegion.setAttribute("data-tauri-drag-region", "");
