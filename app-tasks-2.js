@@ -1,4 +1,5 @@
 const RECENT_COMPLETED_DAYS=7;
+const NEXT_GRACE_MINUTES=5;
 function recentCompletedTasks(){
   const now=new Date();
   const cutoff=new Date(now.getFullYear(),now.getMonth(),now.getDate());
@@ -72,7 +73,7 @@ function emptyHtml(tab){ return `<div class="empty"><strong>${tab==="today"?"今
 function minutesNow(){ const n=new Date(); return n.getHours()*60+n.getMinutes()+n.getSeconds()/60; }
 function upcomingDue(limit=3){
   const now=Date.now();
-  return activeToday().map(t=>{ const d=dueDateForTask(t); return d?{t,d,diff:(d.getTime()-now)/60000}:null; }).filter(Boolean).filter(x=>x.diff>=-15).sort((a,b)=>a.d-b.d).slice(0,limit);
+  return activeToday().map(t=>{ const d=dueDateForTask(t); return d?{t,d,diff:(d.getTime()-now)/60000}:null; }).filter(Boolean).filter(x=>x.diff>=-NEXT_GRACE_MINUTES).sort((a,b)=>a.d-b.d).slice(0,limit);
 }
 function upcomingLabel(diff){
   if(diff<=0) return "现在";
