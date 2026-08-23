@@ -1,0 +1,13 @@
+{
+  "name": "zuodianersha-windows-shell",
+  "private": true,
+  "version": "2.7.1",
+  "scripts": {
+    "sync-web": "node scripts/sync-web.mjs",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}
