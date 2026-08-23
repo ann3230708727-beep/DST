@@ -1,29 +1,15 @@
 (() => {
   if (!window.__TAURI__) return;
 
-  const { window: tauriWindow, dpi } = window.__TAURI__;
+  const { window: tauriWindow, core } = window.__TAURI__;
   const appWindow = tauriWindow.getCurrentWindow();
-  const VISIBLE_EDGE_PX = 16;
   const EDGE_TRIGGER_PX = 24;
   const COLLAPSE_DELAY_MS = 650;
-  const POINTER_POLL_MS = 120;
+  const COLLAPSED_POLL_MS = 80;
   let collapseTimer = null;
   let collapsed = false;
-  let pinned = false;
-  let geometryBusy = false;
-
-  async function monitorGeometry() {
-    const monitor = await tauriWindow.currentMonitor();
-    if (!monitor) return null;
-    const outer = await appWindow.outerSize();
-    return {
-      outer,
-      left: monitor.workArea.position.x,
-      top: monitor.workArea.position.y,
-      width: monitor.workArea.size.width,
-      height: monitor.workArea.size.height
-    };
-  }
+  let animating = false;
+  let pinBusy = false;
 
   function ensureEdgeHandle() {
     let handle = document.querySelector("#windowsEdgeHandle");
@@ -43,7 +29,7 @@
       opacity: "0",
       pointerEvents: "none",
       zIndex: "2147483647",
-      transition: "opacity .16s ease"
+      transition: "opacity .14s ease"
     });
     document.body.appendChild(handle);
     return handle;
@@ -51,43 +37,31 @@
 
   function setCollapsedVisual(value) {
     const handle = ensureEdgeHandle();
-    handle.style.opacity = value ? "0.78" : "0";
+    handle.style.opacity = value ? "0.72" : "0";
     document.documentElement.dataset.windowsCollapsed = value ? "true" : "false";
   }
 
-  async function snapRight() {
-    const g = await monitorGeometry();
-    if (!g) return;
-    const current = await appWindow.outerPosition();
-    const x = g.left + g.width - g.outer.width;
-    const maxY = g.top + g.height - g.outer.height;
-    const y = Math.min(Math.max(current.y, g.top), Math.max(g.top, maxY));
-    await appWindow.setPosition(new dpi.PhysicalPosition(x, y));
-    collapsed = false;
-    setCollapsedVisual(false);
-  }
-
-  async function collapseRight() {
-    if (collapsed) return;
-    const g = await monitorGeometry();
-    if (!g) return;
-    const current = await appWindow.outerPosition();
-    const x = g.left + g.width - VISIBLE_EDGE_PX;
-    await appWindow.setPosition(new dpi.PhysicalPosition(x, current.y));
-    collapsed = true;
-    setCollapsedVisual(true);
-  }
-
-  async function expandRight() {
-    if (!collapsed) return;
-    await snapRight();
+  async function animateEdge(nextCollapsed) {
+    if (animating || collapsed === nextCollapsed) return;
+    animating = true;
+    if (nextCollapsed) setCollapsedVisual(true);
+    try {
+      await core.invoke("animate_edge", { collapsed: nextCollapsed });
+      collapsed = nextCollapsed;
+      if (!collapsed) setCollapsedVisual(false);
+    } catch (error) {
+      console.error("Windows edge animation failed", error);
+      if (nextCollapsed) setCollapsedVisual(false);
+    } finally {
+      animating = false;
+    }
   }
 
   function scheduleCollapse() {
-    if (collapsed || collapseTimer) return;
+    if (collapsed || animating || collapseTimer) return;
     collapseTimer = setTimeout(() => {
       collapseTimer = null;
-      collapseRight().catch(console.error);
+      animateEdge(true).catch(console.error);
     }, COLLAPSE_DELAY_MS);
   }
 
@@ -96,56 +70,66 @@
     collapseTimer = null;
   }
 
-  async function pointerTick() {
-    if (geometryBusy) return;
-    geometryBusy = true;
+  async function collapsedPointerTick() {
+    if (!collapsed || animating) return;
     try {
-      const [cursor, g, pos] = await Promise.all([
+      const [cursor, monitor, pos, size] = await Promise.all([
         tauriWindow.cursorPosition(),
-        monitorGeometry(),
-        appWindow.outerPosition()
+        tauriWindow.currentMonitor(),
+        appWindow.outerPosition(),
+        appWindow.outerSize()
       ]);
-      if (!cursor || !g || !pos) return;
-
-      const right = g.left + g.width;
-      const withinWindowY = cursor.y >= pos.y && cursor.y <= pos.y + g.outer.height;
-
-      if (collapsed) {
-        const inRightEdgeTrigger = cursor.x >= right - EDGE_TRIGGER_PX && cursor.x <= right && withinWindowY;
-        if (inRightEdgeTrigger) {
-          cancelCollapse();
-          await expandRight();
-        }
-        return;
+      if (!cursor || !monitor || !pos || !size) return;
+      const right = monitor.workArea.position.x + monitor.workArea.size.width;
+      const withinY = cursor.y >= pos.y && cursor.y <= pos.y + size.height;
+      const inTrigger = cursor.x >= right - EDGE_TRIGGER_PX && cursor.x <= right && withinY;
+      if (inTrigger) {
+        cancelCollapse();
+        await animateEdge(false);
       }
-
-      const withinWindowX = cursor.x >= pos.x && cursor.x <= pos.x + g.outer.width;
-      if (withinWindowX && withinWindowY) cancelCollapse();
-      else scheduleCollapse();
     } catch (error) {
       console.error("Windows edge pointer watch failed", error);
-    } finally {
-      geometryBusy = false;
     }
+  }
+
+  function applyPinVisual(btn, pinned) {
+    btn.classList.toggle("active", pinned);
+    btn.title = pinned ? "取消置顶" : "置顶";
+    btn.setAttribute("aria-label", btn.title);
+    btn.setAttribute("aria-pressed", pinned ? "true" : "false");
   }
 
   async function configurePinButton() {
     const btn = document.querySelector("#windowPinBtn");
     if (!btn) return false;
+    if (btn.dataset.windowsShellBound === "true") return true;
+
+    btn.dataset.windowsShellBound = "true";
     btn.disabled = false;
-    btn.title = "置顶";
-    btn.setAttribute("aria-label", "置顶");
-    pinned = await appWindow.isAlwaysOnTop();
-    btn.classList.toggle("active", pinned);
+    btn.removeAttribute("disabled");
+
+    try {
+      const pinned = await core.invoke("always_on_top_state");
+      applyPinVisual(btn, !!pinned);
+    } catch (error) {
+      console.error("Could not read always-on-top state", error);
+      applyPinVisual(btn, false);
+    }
+
     btn.addEventListener("click", async event => {
       event.preventDefault();
-      event.stopPropagation();
-      pinned = !pinned;
-      await appWindow.setAlwaysOnTop(pinned);
-      btn.classList.toggle("active", pinned);
-      btn.title = pinned ? "取消置顶" : "置顶";
-      btn.setAttribute("aria-label", btn.title);
-    });
+      event.stopImmediatePropagation();
+      if (pinBusy) return;
+      pinBusy = true;
+      try {
+        const pinned = await core.invoke("toggle_always_on_top");
+        applyPinVisual(btn, !!pinned);
+      } catch (error) {
+        console.error("Could not toggle always-on-top", error);
+      } finally {
+        pinBusy = false;
+      }
+    }, true);
     return true;
   }
 
@@ -156,17 +140,15 @@
     }
   }
 
-  window.addEventListener("focus", () => {
-    cancelCollapse();
-    expandRight().catch(console.error);
-  });
+  window.addEventListener("mouseenter", cancelCollapse);
+  document.documentElement.addEventListener("mouseleave", scheduleCollapse);
+  window.addEventListener("focus", cancelCollapse);
 
   window.addEventListener("DOMContentLoaded", async () => {
     ensureEdgeHandle();
     await waitForUi();
     const dragRegion = document.querySelector(".brand-block");
     if (dragRegion) dragRegion.setAttribute("data-tauri-drag-region", "");
-    await snapRight();
-    setInterval(() => pointerTick(), POINTER_POLL_MS);
+    setInterval(() => collapsedPointerTick(), COLLAPSED_POLL_MS);
   });
 })();
