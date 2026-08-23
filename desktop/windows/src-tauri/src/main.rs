@@ -18,6 +18,7 @@ const ANIMATION_FRAMES: u64 = 12;
 static ANIMATION_GENERATION: AtomicU64 = AtomicU64::new(0);
 static COLLAPSED_STATE: AtomicBool = AtomicBool::new(false);
 static PINNED_STATE: AtomicBool = AtomicBool::new(false);
+static EDGE_TOPMOST_STATE: AtomicBool = AtomicBool::new(false);
 static WATCHER_STARTED: AtomicBool = AtomicBool::new(false);
 
 fn eased(t: f64) -> f64 {
@@ -61,36 +62,63 @@ fn animate_window(window: WebviewWindow, collapsed: bool) -> Result<(), String> 
     Ok(())
 }
 
-#[tauri::command]
-async fn toggle_pinned(window: WebviewWindow) -> Result<bool, String> {
-    let current = window.is_always_on_top().map_err(|e| e.to_string())?;
-    let next = !current;
-
+fn raise_for_edge_reveal(window: &WebviewWindow) -> Result<(), String> {
+    window.show().map_err(|e| e.to_string())?;
     window
-        .set_always_on_top(next)
-        .map_err(|e| format!("set_always_on_top failed: {e}"))?;
+        .set_always_on_top(true)
+        .map_err(|e| format!("temporary edge topmost failed: {e}"))?;
+    EDGE_TOPMOST_STATE.store(true, Ordering::SeqCst);
+    Ok(())
+}
 
-    let actual = window
-        .is_always_on_top()
-        .map_err(|e| format!("is_always_on_top failed: {e}"))?;
-    PINNED_STATE.store(actual, Ordering::SeqCst);
-
-    if actual && COLLAPSED_STATE.load(Ordering::SeqCst) {
-        let expand_window = window.clone();
-        tauri::async_runtime::spawn_blocking(move || animate_window(expand_window, false))
-            .await
-            .map_err(|e| e.to_string())??;
+fn clear_edge_topmost(window: &WebviewWindow) -> Result<(), String> {
+    if PINNED_STATE.load(Ordering::SeqCst) {
+        EDGE_TOPMOST_STATE.store(false, Ordering::SeqCst);
+        return Ok(());
     }
 
-    let _ = window.emit("windows-pin-state", actual);
-    Ok(actual)
+    window
+        .set_always_on_top(false)
+        .map_err(|e| format!("clear temporary edge topmost failed: {e}"))?;
+    EDGE_TOPMOST_STATE.store(false, Ordering::SeqCst);
+    Ok(())
 }
 
 #[tauri::command]
-fn pinned_state(window: WebviewWindow) -> Result<bool, String> {
-    let actual = window.is_always_on_top().map_err(|e| e.to_string())?;
-    PINNED_STATE.store(actual, Ordering::SeqCst);
-    Ok(actual)
+async fn toggle_pinned(window: WebviewWindow) -> Result<bool, String> {
+    let next = !PINNED_STATE.load(Ordering::SeqCst);
+    PINNED_STATE.store(next, Ordering::SeqCst);
+
+    if next {
+        window
+            .set_always_on_top(true)
+            .map_err(|e| format!("set_always_on_top failed: {e}"))?;
+        EDGE_TOPMOST_STATE.store(false, Ordering::SeqCst);
+
+        if COLLAPSED_STATE.load(Ordering::SeqCst) {
+            let expand_window = window.clone();
+            tauri::async_runtime::spawn_blocking(move || animate_window(expand_window, false))
+                .await
+                .map_err(|e| e.to_string())??;
+        }
+    } else if COLLAPSED_STATE.load(Ordering::SeqCst) {
+        window
+            .set_always_on_top(false)
+            .map_err(|e| format!("clear always_on_top failed: {e}"))?;
+        EDGE_TOPMOST_STATE.store(false, Ordering::SeqCst);
+    } else {
+        // Keep the currently exposed edge panel above other windows until the
+        // pointer leaves and it collapses. Pin and edge-reveal remain separate.
+        EDGE_TOPMOST_STATE.store(true, Ordering::SeqCst);
+    }
+
+    let _ = window.emit("windows-pin-state", next);
+    Ok(next)
+}
+
+#[tauri::command]
+fn pinned_state() -> bool {
+    PINNED_STATE.load(Ordering::SeqCst)
 }
 
 #[cfg(windows)]
@@ -156,7 +184,12 @@ fn start_native_edge_watcher(window: WebviewWindow) {
                     && cursor_y >= top - EDGE_Y_TOLERANCE_PX
                     && cursor_y <= bottom + EDGE_Y_TOLERANCE_PX;
                 if in_trigger {
-                    let _ = animate_window(window.clone(), false);
+                    // A normal (unpinned) window may be behind the currently
+                    // active app. Raise it temporarily without stealing focus,
+                    // then slide it into view.
+                    if raise_for_edge_reveal(&window).is_ok() {
+                        let _ = animate_window(window.clone(), false);
+                    }
                 }
                 continue;
             }
@@ -177,7 +210,11 @@ fn start_native_edge_watcher(window: WebviewWindow) {
                     if started.elapsed() >= Duration::from_millis(COLLAPSE_DELAY_MS) =>
                 {
                     outside_since = None;
-                    let _ = animate_window(window.clone(), true);
+                    if animate_window(window.clone(), true).is_ok()
+                        && EDGE_TOPMOST_STATE.load(Ordering::SeqCst)
+                    {
+                        let _ = clear_edge_topmost(&window);
+                    }
                 }
                 _ => {}
             }
@@ -192,6 +229,7 @@ fn main() {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_always_on_top(false);
                 PINNED_STATE.store(false, Ordering::SeqCst);
+                EDGE_TOPMOST_STATE.store(false, Ordering::SeqCst);
                 COLLAPSED_STATE.store(false, Ordering::SeqCst);
                 let _ = window.emit("windows-pin-state", false);
                 start_native_edge_watcher(window);
