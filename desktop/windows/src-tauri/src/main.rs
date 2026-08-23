@@ -7,6 +7,7 @@ use std::{
 };
 use tauri::{Emitter, Manager, PhysicalPosition, WebviewWindow};
 
+const APP_ICON: tauri::image::Image<'static> = tauri::include_image!("./icons/icon.ico");
 const VISIBLE_EDGE_PX: i32 = 16;
 const EDGE_TRIGGER_PX: i32 = 32;
 const EDGE_Y_TOLERANCE_PX: i32 = 16;
@@ -227,6 +228,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![toggle_pinned, pinned_state])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_icon(APP_ICON.clone());
                 let _ = window.set_always_on_top(false);
                 PINNED_STATE.store(false, Ordering::SeqCst);
                 EDGE_TOPMOST_STATE.store(false, Ordering::SeqCst);
