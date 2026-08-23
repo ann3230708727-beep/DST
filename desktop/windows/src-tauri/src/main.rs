@@ -14,7 +14,6 @@ const COLLAPSE_DELAY_MS: u64 = 120;
 const POINTER_POLL_MS: u64 = 16;
 const ANIMATION_MS: u64 = 140;
 const ANIMATION_FRAMES: u64 = 12;
-const TOPMOST_REASSERT_MS: u64 = 250;
 
 static ANIMATION_GENERATION: AtomicU64 = AtomicU64::new(0);
 static COLLAPSED_STATE: AtomicBool = AtomicBool::new(false);
@@ -62,80 +61,18 @@ fn animate_window(window: WebviewWindow, collapsed: bool) -> Result<(), String> 
     Ok(())
 }
 
-#[cfg(windows)]
-fn root_hwnd(window: &WebviewWindow) -> Result<isize, String> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetAncestor, GA_ROOT};
-
-    let hwnd = window.hwnd().map_err(|e| e.to_string())?;
-    let root = unsafe { GetAncestor(hwnd.0, GA_ROOT) };
-    if root == 0 {
-        Ok(hwnd.0)
-    } else {
-        Ok(root)
-    }
-}
-
-#[cfg(windows)]
-fn native_topmost_state(window: &WebviewWindow) -> Result<bool, String> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongPtrW, GWL_EXSTYLE, WS_EX_TOPMOST,
-    };
-
-    let hwnd = root_hwnd(window)?;
-    let ex_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32;
-    Ok(ex_style & WS_EX_TOPMOST != 0)
-}
-
-#[cfg(windows)]
-fn set_native_topmost(window: &WebviewWindow, topmost: bool) -> Result<(), String> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        SetWindowPos, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-        SWP_SHOWWINDOW,
-    };
-
-    let hwnd = root_hwnd(window)?;
-    let insert_after = if topmost { HWND_TOPMOST } else { HWND_NOTOPMOST };
-    let ok = unsafe {
-        SetWindowPos(
-            hwnd,
-            insert_after,
-            0,
-            0,
-            0,
-            0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
-        )
-    };
-    if ok == 0 {
-        return Err(std::io::Error::last_os_error().to_string());
-    }
-
-    let actual = native_topmost_state(window)?;
-    if actual != topmost {
-        return Err(format!(
-            "Windows topmost verification failed: requested={topmost}, actual={actual}"
-        ));
-    }
-    Ok(())
-}
-
-#[cfg(not(windows))]
-fn native_topmost_state(window: &WebviewWindow) -> Result<bool, String> {
-    window.is_always_on_top().map_err(|e| e.to_string())
-}
-
-#[cfg(not(windows))]
-fn set_native_topmost(window: &WebviewWindow, topmost: bool) -> Result<(), String> {
-    window.set_always_on_top(topmost).map_err(|e| e.to_string())
-}
-
 #[tauri::command]
 async fn toggle_pinned(window: WebviewWindow) -> Result<bool, String> {
-    let current = native_topmost_state(&window)?;
+    let current = window.is_always_on_top().map_err(|e| e.to_string())?;
     let next = !current;
 
-    set_native_topmost(&window, next)?;
-    let actual = native_topmost_state(&window)?;
+    window
+        .set_always_on_top(next)
+        .map_err(|e| format!("set_always_on_top failed: {e}"))?;
+
+    let actual = window
+        .is_always_on_top()
+        .map_err(|e| format!("is_always_on_top failed: {e}"))?;
     PINNED_STATE.store(actual, Ordering::SeqCst);
 
     if actual && COLLAPSED_STATE.load(Ordering::SeqCst) {
@@ -151,7 +88,7 @@ async fn toggle_pinned(window: WebviewWindow) -> Result<bool, String> {
 
 #[tauri::command]
 fn pinned_state(window: WebviewWindow) -> Result<bool, String> {
-    let actual = native_topmost_state(&window)?;
+    let actual = window.is_always_on_top().map_err(|e| e.to_string())?;
     PINNED_STATE.store(actual, Ordering::SeqCst);
     Ok(actual)
 }
@@ -163,7 +100,7 @@ fn native_pointer_and_rect(window: &WebviewWindow) -> Option<((i32, i32), (i32, 
         UI::WindowsAndMessaging::{GetCursorPos, GetWindowRect},
     };
 
-    let hwnd = root_hwnd(window).ok()?;
+    let hwnd = window.hwnd().ok()?;
     let mut point = POINT { x: 0, y: 0 };
     let mut rect = RECT {
         left: 0,
@@ -173,7 +110,7 @@ fn native_pointer_and_rect(window: &WebviewWindow) -> Option<((i32, i32), (i32, 
     };
 
     let cursor_ok = unsafe { GetCursorPos(&mut point) };
-    let rect_ok = unsafe { GetWindowRect(hwnd, &mut rect) };
+    let rect_ok = unsafe { GetWindowRect(hwnd.0, &mut rect) };
     if cursor_ok == 0 || rect_ok == 0 {
         return None;
     }
@@ -193,7 +130,6 @@ fn start_native_edge_watcher(window: WebviewWindow) {
 
     thread::spawn(move || {
         let mut outside_since: Option<Instant> = None;
-        let mut last_topmost_assert = Instant::now() - Duration::from_millis(TOPMOST_REASSERT_MS);
 
         loop {
             thread::sleep(Duration::from_millis(POINTER_POLL_MS));
@@ -202,13 +138,6 @@ fn start_native_edge_watcher(window: WebviewWindow) {
                 outside_since = None;
                 if COLLAPSED_STATE.load(Ordering::SeqCst) {
                     let _ = animate_window(window.clone(), false);
-                }
-                if last_topmost_assert.elapsed() >= Duration::from_millis(TOPMOST_REASSERT_MS) {
-                    if set_native_topmost(&window, true).is_err() {
-                        PINNED_STATE.store(false, Ordering::SeqCst);
-                        let _ = window.emit("windows-pin-state", false);
-                    }
-                    last_topmost_assert = Instant::now();
                 }
                 continue;
             }
@@ -261,7 +190,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![toggle_pinned, pinned_state])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
-                let _ = set_native_topmost(&window, false);
+                let _ = window.set_always_on_top(false);
                 PINNED_STATE.store(false, Ordering::SeqCst);
                 COLLAPSED_STATE.store(false, Ordering::SeqCst);
                 let _ = window.emit("windows-pin-state", false);
