@@ -10,6 +10,7 @@
     "core:window:allow-current-monitor",
     "core:window:allow-outer-position",
     "core:window:allow-outer-size",
-    "core:window:allow-is-always-on-top"
+    "core:window:allow-is-always-on-top",
+    "core:window:allow-cursor-position"
   ]
 }
