@@ -1,14 +1,7 @@
 (() => {
   if (!window.__TAURI__) return;
 
-  const { window: tauriWindow, core } = window.__TAURI__;
-  const appWindow = tauriWindow.getCurrentWindow();
-  const EDGE_TRIGGER_PX = 24;
-  const COLLAPSE_DELAY_MS = 650;
-  const COLLAPSED_POLL_MS = 80;
-  let collapseTimer = null;
-  let collapsed = false;
-  let animating = false;
+  const { core, event } = window.__TAURI__;
   let pinBusy = false;
 
   function ensureEdgeHandle() {
@@ -41,57 +34,6 @@
     document.documentElement.dataset.windowsCollapsed = value ? "true" : "false";
   }
 
-  async function animateEdge(nextCollapsed) {
-    if (animating || collapsed === nextCollapsed) return;
-    animating = true;
-    if (nextCollapsed) setCollapsedVisual(true);
-    try {
-      await core.invoke("animate_edge", { collapsed: nextCollapsed });
-      collapsed = nextCollapsed;
-      if (!collapsed) setCollapsedVisual(false);
-    } catch (error) {
-      console.error("Windows edge animation failed", error);
-      if (nextCollapsed) setCollapsedVisual(false);
-    } finally {
-      animating = false;
-    }
-  }
-
-  function scheduleCollapse() {
-    if (collapsed || animating || collapseTimer) return;
-    collapseTimer = setTimeout(() => {
-      collapseTimer = null;
-      animateEdge(true).catch(console.error);
-    }, COLLAPSE_DELAY_MS);
-  }
-
-  function cancelCollapse() {
-    clearTimeout(collapseTimer);
-    collapseTimer = null;
-  }
-
-  async function collapsedPointerTick() {
-    if (!collapsed || animating) return;
-    try {
-      const [cursor, monitor, pos, size] = await Promise.all([
-        tauriWindow.cursorPosition(),
-        tauriWindow.currentMonitor(),
-        appWindow.outerPosition(),
-        appWindow.outerSize()
-      ]);
-      if (!cursor || !monitor || !pos || !size) return;
-      const right = monitor.workArea.position.x + monitor.workArea.size.width;
-      const withinY = cursor.y >= pos.y && cursor.y <= pos.y + size.height;
-      const inTrigger = cursor.x >= right - EDGE_TRIGGER_PX && cursor.x <= right && withinY;
-      if (inTrigger) {
-        cancelCollapse();
-        await animateEdge(false);
-      }
-    } catch (error) {
-      console.error("Windows edge pointer watch failed", error);
-    }
-  }
-
   function applyPinVisual(btn, pinned) {
     btn.classList.toggle("active", pinned);
     btn.title = pinned ? "取消置顶" : "置顶";
@@ -109,10 +51,10 @@
     btn.removeAttribute("disabled");
 
     try {
-      const pinned = await core.invoke("always_on_top_state");
+      const pinned = await core.invoke("pinned_state");
       applyPinVisual(btn, !!pinned);
     } catch (error) {
-      console.error("Could not read always-on-top state", error);
+      console.error("Could not read pinned state", error);
       applyPinVisual(btn, false);
     }
 
@@ -122,14 +64,15 @@
       if (pinBusy) return;
       pinBusy = true;
       try {
-        const pinned = await core.invoke("toggle_always_on_top");
+        const pinned = await core.invoke("toggle_pinned");
         applyPinVisual(btn, !!pinned);
       } catch (error) {
-        console.error("Could not toggle always-on-top", error);
+        console.error("Could not toggle pinned state", error);
       } finally {
         pinBusy = false;
       }
     }, true);
+
     return true;
   }
 
@@ -140,15 +83,18 @@
     }
   }
 
-  window.addEventListener("mouseenter", cancelCollapse);
-  document.documentElement.addEventListener("mouseleave", scheduleCollapse);
-  window.addEventListener("focus", cancelCollapse);
-
   window.addEventListener("DOMContentLoaded", async () => {
     ensureEdgeHandle();
     await waitForUi();
     const dragRegion = document.querySelector(".brand-block");
     if (dragRegion) dragRegion.setAttribute("data-tauri-drag-region", "");
-    setInterval(() => collapsedPointerTick(), COLLAPSED_POLL_MS);
+
+    try {
+      await event.listen("windows-edge-state", ({ payload }) => {
+        setCollapsedVisual(!!payload);
+      });
+    } catch (error) {
+      console.error("Could not listen for Windows edge state", error);
+    }
   });
 })();
