@@ -56,17 +56,46 @@
     btn.setAttribute("aria-pressed", pinned ? "true" : "false");
   }
 
+  function showShellMessage(message) {
+    let el = document.querySelector("#windowsShellMessage");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "windowsShellMessage";
+      Object.assign(el.style, {
+        position: "fixed",
+        left: "50%",
+        top: "18px",
+        transform: "translateX(-50%)",
+        maxWidth: "calc(100% - 32px)",
+        padding: "8px 12px",
+        borderRadius: "999px",
+        background: "rgba(32,34,31,.92)",
+        color: "#fff",
+        fontSize: "12px",
+        lineHeight: "1.35",
+        zIndex: "2147483647",
+        pointerEvents: "none",
+        opacity: "0",
+        transition: "opacity .14s ease"
+      });
+      document.body.appendChild(el);
+    }
+    el.textContent = message;
+    el.style.opacity = "1";
+    clearTimeout(el._timer);
+    el._timer = setTimeout(() => { el.style.opacity = "0"; }, 2600);
+  }
+
   async function refreshPinState() {
     enablePinButton();
     try {
       applyPinVisual(!!(await core.invoke("pinned_state")));
     } catch (error) {
       console.error("Could not read pinned state", error);
+      showShellMessage(`读取置顶状态失败：${String(error)}`);
     }
   }
 
-  // The Web UI is created asynchronously. Observe insertion and remove the
-  // Web/PWA-only disabled state immediately, before any invoke is attempted.
   const pinObserver = new MutationObserver(() => {
     if (enablePinButton()) pinObserver.disconnect();
   });
@@ -81,14 +110,14 @@
     if (pinBusy) return;
     pinBusy = true;
 
-    const previous = btn.getAttribute("aria-pressed") === "true";
-    applyPinVisual(!previous);
     try {
       const pinned = await core.invoke("toggle_pinned");
       applyPinVisual(!!pinned);
+      showShellMessage(pinned ? "已置顶" : "已取消置顶");
     } catch (error) {
-      applyPinVisual(previous);
+      await refreshPinState();
       console.error("Could not toggle pinned state", error);
+      showShellMessage(`置顶失败：${String(error)}`);
     } finally {
       pinBusy = false;
     }
