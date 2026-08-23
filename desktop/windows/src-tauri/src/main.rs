@@ -10,9 +10,9 @@ use tauri::{Emitter, Manager, PhysicalPosition, WebviewWindow};
 const VISIBLE_EDGE_PX: i32 = 16;
 const EDGE_TRIGGER_PX: i32 = 32;
 const EDGE_Y_TOLERANCE_PX: i32 = 16;
-const COLLAPSE_DELAY_MS: u64 = 170;
-const POINTER_POLL_MS: u64 = 20;
-const ANIMATION_MS: u64 = 150;
+const COLLAPSE_DELAY_MS: u64 = 120;
+const POINTER_POLL_MS: u64 = 16;
+const ANIMATION_MS: u64 = 140;
 const ANIMATION_FRAMES: u64 = 12;
 
 static ANIMATION_GENERATION: AtomicU64 = AtomicU64::new(0);
@@ -21,7 +21,6 @@ static PINNED_STATE: AtomicBool = AtomicBool::new(false);
 static WATCHER_STARTED: AtomicBool = AtomicBool::new(false);
 
 fn eased(t: f64) -> f64 {
-    // Smoothstep: quick but without abrupt starts/stops.
     t * t * (3.0 - 2.0 * t)
 }
 
@@ -62,13 +61,6 @@ fn animate_window(window: WebviewWindow, collapsed: bool) -> Result<(), String> 
     Ok(())
 }
 
-#[tauri::command]
-async fn animate_edge(window: WebviewWindow, collapsed: bool) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || animate_window(window, collapsed))
-        .await
-        .map_err(|e| e.to_string())?
-}
-
 #[cfg(windows)]
 fn set_native_topmost(window: &WebviewWindow, topmost: bool) -> Result<(), String> {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -103,7 +95,6 @@ fn set_native_topmost(window: &WebviewWindow, topmost: bool) -> Result<(), Strin
 async fn toggle_pinned(window: WebviewWindow) -> Result<bool, String> {
     let next = !PINNED_STATE.load(Ordering::SeqCst);
 
-    // Keep Tauri's state in sync, then enforce the Windows z-order directly.
     window.set_always_on_top(next).map_err(|e| e.to_string())?;
     set_native_topmost(&window, next)?;
     PINNED_STATE.store(next, Ordering::SeqCst);
@@ -115,6 +106,7 @@ async fn toggle_pinned(window: WebviewWindow) -> Result<bool, String> {
             .map_err(|e| e.to_string())??;
     }
 
+    let _ = window.emit("windows-pin-state", next);
     Ok(next)
 }
 
@@ -124,15 +116,32 @@ fn pinned_state() -> bool {
 }
 
 #[cfg(windows)]
-fn cursor_position() -> Option<(i32, i32)> {
-    use windows_sys::Win32::{Foundation::POINT, UI::WindowsAndMessaging::GetCursorPos};
+fn native_pointer_and_rect(window: &WebviewWindow) -> Option<((i32, i32), (i32, i32, i32, i32))> {
+    use windows_sys::Win32::{
+        Foundation::{POINT, RECT},
+        UI::WindowsAndMessaging::{GetCursorPos, GetWindowRect},
+    };
+
+    let hwnd = window.hwnd().ok()?;
     let mut point = POINT { x: 0, y: 0 };
-    let ok = unsafe { GetCursorPos(&mut point) };
-    if ok == 0 { None } else { Some((point.x, point.y)) }
+    let mut rect = RECT {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
+
+    let cursor_ok = unsafe { GetCursorPos(&mut point) };
+    let rect_ok = unsafe { GetWindowRect(hwnd.0, &mut rect) };
+    if cursor_ok == 0 || rect_ok == 0 {
+        return None;
+    }
+
+    Some(((point.x, point.y), (rect.left, rect.top, rect.right, rect.bottom)))
 }
 
 #[cfg(not(windows))]
-fn cursor_position() -> Option<(i32, i32)> {
+fn native_pointer_and_rect(_window: &WebviewWindow) -> Option<((i32, i32), (i32, i32, i32, i32))> {
     None
 }
 
@@ -155,39 +164,31 @@ fn start_native_edge_watcher(window: WebviewWindow) {
                 continue;
             }
 
-            let Some((cursor_x, cursor_y)) = cursor_position() else {
+            let Some(((cursor_x, cursor_y), (left, top, right_edge, bottom))) =
+                native_pointer_and_rect(&window)
+            else {
                 continue;
             };
-            let Ok(pos) = window.outer_position() else {
-                continue;
-            };
-            let Ok(size) = window.outer_size() else {
-                continue;
-            };
-            let Ok(Some(monitor)) = window.current_monitor() else {
-                continue;
-            };
-
-            let work = monitor.work_area();
-            let right = work.position.x + work.size.width as i32;
-            let top = pos.y - EDGE_Y_TOLERANCE_PX;
-            let bottom = pos.y + size.height as i32 + EDGE_Y_TOLERANCE_PX;
-            let within_y = cursor_y >= top && cursor_y <= bottom;
 
             if COLLAPSED_STATE.load(Ordering::SeqCst) {
                 outside_since = None;
-                let in_trigger = cursor_x >= right - EDGE_TRIGGER_PX
-                    && cursor_x <= right + 1
-                    && within_y;
+                let visible_left = left;
+                let in_trigger = cursor_x >= visible_left - EDGE_TRIGGER_PX
+                    && cursor_x <= right_edge + 1
+                    && cursor_y >= top - EDGE_Y_TOLERANCE_PX
+                    && cursor_y <= bottom + EDGE_Y_TOLERANCE_PX;
                 if in_trigger {
                     let _ = animate_window(window.clone(), false);
                 }
                 continue;
             }
 
-            let within_x = cursor_x >= pos.x && cursor_x <= pos.x + size.width as i32;
-            let within_window_y = cursor_y >= pos.y && cursor_y <= pos.y + size.height as i32;
-            if within_x && within_window_y {
+            let inside = cursor_x >= left
+                && cursor_x <= right_edge
+                && cursor_y >= top
+                && cursor_y <= bottom;
+
+            if inside {
                 outside_since = None;
                 continue;
             }
@@ -208,17 +209,14 @@ fn start_native_edge_watcher(window: WebviewWindow) {
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![
-            animate_edge,
-            toggle_pinned,
-            pinned_state
-        ])
+        .invoke_handler(tauri::generate_handler![toggle_pinned, pinned_state])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_always_on_top(false);
                 let _ = set_native_topmost(&window, false);
                 PINNED_STATE.store(false, Ordering::SeqCst);
                 COLLAPSED_STATE.store(false, Ordering::SeqCst);
+                let _ = window.emit("windows-pin-state", false);
                 start_native_edge_watcher(window);
             }
             Ok(())
