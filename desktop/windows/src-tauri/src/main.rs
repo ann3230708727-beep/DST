@@ -14,6 +14,7 @@ const COLLAPSE_DELAY_MS: u64 = 120;
 const POINTER_POLL_MS: u64 = 16;
 const ANIMATION_MS: u64 = 140;
 const ANIMATION_FRAMES: u64 = 12;
+const TOPMOST_REASSERT_MS: u64 = 250;
 
 static ANIMATION_GENERATION: AtomicU64 = AtomicU64::new(0);
 static COLLAPSED_STATE: AtomicBool = AtomicBool::new(false);
@@ -152,6 +153,7 @@ fn start_native_edge_watcher(window: WebviewWindow) {
 
     thread::spawn(move || {
         let mut outside_since: Option<Instant> = None;
+        let mut last_topmost_assert = Instant::now() - Duration::from_millis(TOPMOST_REASSERT_MS);
 
         loop {
             thread::sleep(Duration::from_millis(POINTER_POLL_MS));
@@ -160,6 +162,10 @@ fn start_native_edge_watcher(window: WebviewWindow) {
                 outside_since = None;
                 if COLLAPSED_STATE.load(Ordering::SeqCst) {
                     let _ = animate_window(window.clone(), false);
+                }
+                if last_topmost_assert.elapsed() >= Duration::from_millis(TOPMOST_REASSERT_MS) {
+                    let _ = set_native_topmost(&window, true);
+                    last_topmost_assert = Instant::now();
                 }
                 continue;
             }
