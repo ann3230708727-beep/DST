@@ -38,11 +38,18 @@
     return document.querySelector('[data-shell-action="pin"]');
   }
 
-  function applyPinVisual(pinned) {
+  function enablePinButton() {
     const btn = pinButton();
-    if (!btn) return;
+    if (!btn) return null;
     btn.disabled = false;
     btn.removeAttribute("disabled");
+    if (!btn.hasAttribute("aria-pressed")) btn.setAttribute("aria-pressed", "false");
+    return btn;
+  }
+
+  function applyPinVisual(pinned) {
+    const btn = enablePinButton();
+    if (!btn) return;
     btn.classList.toggle("active", pinned);
     btn.title = pinned ? "取消置顶" : "置顶";
     btn.setAttribute("aria-label", btn.title);
@@ -50,6 +57,7 @@
   }
 
   async function refreshPinState() {
+    enablePinButton();
     try {
       applyPinVisual(!!(await core.invoke("pinned_state")));
     } catch (error) {
@@ -57,8 +65,14 @@
     }
   }
 
-  // Delegation is intentional: the Web UI is created asynchronously after this
-  // bridge loads, so binding to a button once during startup can miss it.
+  // The Web UI is created asynchronously. Observe insertion and remove the
+  // Web/PWA-only disabled state immediately, before any invoke is attempted.
+  const pinObserver = new MutationObserver(() => {
+    if (enablePinButton()) pinObserver.disconnect();
+  });
+  pinObserver.observe(document.documentElement, { childList: true, subtree: true });
+  enablePinButton();
+
   document.addEventListener("click", async e => {
     const btn = e.target.closest?.('[data-shell-action="pin"]');
     if (!btn) return;
@@ -66,10 +80,14 @@
     e.stopImmediatePropagation();
     if (pinBusy) return;
     pinBusy = true;
+
+    const previous = btn.getAttribute("aria-pressed") === "true";
+    applyPinVisual(!previous);
     try {
       const pinned = await core.invoke("toggle_pinned");
       applyPinVisual(!!pinned);
     } catch (error) {
+      applyPinVisual(previous);
       console.error("Could not toggle pinned state", error);
     } finally {
       pinBusy = false;
@@ -78,7 +96,7 @@
 
   async function waitForPinButton() {
     for (let i = 0; i < 120; i++) {
-      if (pinButton()) {
+      if (enablePinButton()) {
         await refreshPinState();
         return;
       }
