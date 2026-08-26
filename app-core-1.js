@@ -4,7 +4,7 @@ document.body.innerHTML=`
       <header class="topbar">
         <div class="brand-block">
           <div class="date" id="dateLabel"></div>
-          <h1>做点儿啥</h1>
+          <h1>Do Stuff</h1>
         </div>
         <div class="window-controls">
           <button class="icon-btn" id="windowPinBtn" type="button" disabled

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "做点儿啥",
+  "productName": "Do Stuff",
   "version": "2.7.1",
-  "identifier": "com.zuodianersha.desktop",
+  "identifier": "com.dostuff.desktop",
   "build": {
     "beforeDevCommand": "npm run sync-web",
     "beforeBuildCommand": "npm run sync-web",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "做点儿啥",
+        "title": "Do Stuff",
         "width": 720,
         "height": 720,
         "minWidth": 350,

@@ -1,6 +1,6 @@
 {
-  "name": "做点儿啥",
-  "short_name": "做点儿啥",
+  "name": "Do Stuff",
+  "short_name": "Do Stuff",
   "description": "极简、低决策成本的待办小工具",
   "lang": "zh-CN",
   "start_url": "./",

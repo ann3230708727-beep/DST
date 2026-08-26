@@ -239,5 +239,5 @@ fn main() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running 做点儿啥 Windows shell");
+        .expect("error while running Do Stuff Windows shell");
 }

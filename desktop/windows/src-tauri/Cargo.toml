@@ -1,7 +1,7 @@
 [package]
-name = "zuodianersha_windows"
+name = "dostuff_windows"
 version = "2.7.1"
-description = "Windows shell for 做点儿啥"
+description = "Windows shell for Do Stuff"
 authors = ["Ann"]
 edition = "2021"
 
@@ -10,6 +10,10 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["image-ico"] }
+
+[[bin]]
+name = "DoStuff"
+path = "src/main.rs"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }

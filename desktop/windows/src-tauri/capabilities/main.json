@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-capability",
-  "description": "Window permissions for the 做点儿啥 Windows shell",
+  "description": "Window permissions for the Do Stuff Windows shell",
   "windows": ["main"],
   "permissions": [
     "core:default",

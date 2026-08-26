@@ -1,4 +1,4 @@
-# 做点儿啥 Windows Tauri 壳（第一阶段）
+# Do Stuff Windows Tauri 壳（第一阶段）
 
 这个目录只负责 Windows 原生窗口能力，不承载任务业务逻辑。
 
